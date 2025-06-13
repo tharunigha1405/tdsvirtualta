@@ -43,3 +43,6 @@ async def ask_question(request: Request):
         "answer": corpus[best_match_id],
         "score": round(best_score, 3)
     }
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=10000)
