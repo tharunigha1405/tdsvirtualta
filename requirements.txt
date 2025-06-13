@@ -4,3 +4,4 @@ beautifulsoup4
 markdownify
 playwright
 requests
+sentence-transformers
