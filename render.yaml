@@ -8,7 +8,3 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: ENV
-        value: production
-      - key: API_KEY
-        value: your-secret-api-key
