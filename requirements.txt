@@ -5,3 +5,5 @@ markdownify
 playwright
 requests
 sentence-transformers
+torch
+scipy
