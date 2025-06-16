@@ -1,25 +1,38 @@
+# api/index.py
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import json
-from sentence_transformers import SentenceTransformer, util
+import torch
+from transformers import AutoTokenizer, AutoModel
+import torch.nn.functional as F
+import os
 
-# Load combined data
+# Set cache path
+os.environ["HF_HOME"] = "/tmp/huggingface"
+
+app = FastAPI()
+
+model_name = "sentence-transformers/all-MiniLM-L6-v2"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
+
+# Load your data
 with open("combined_data.json", "r", encoding="utf-8") as f:
     documents = json.load(f)
 
-# Extract only text content
 corpus = [doc["content"] for doc in documents]
 
-# Load sentence transformer model
-model = SentenceTransformer("all-MiniLM-L6-v2")
-corpus_embeddings = model.encode(corpus, convert_to_tensor=True)
+def get_embedding(text):
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1)
 
-# Create FastAPI app
-app = FastAPI()
+corpus_embeddings = torch.cat([get_embedding(text) for text in corpus])
 
 @app.get("/")
-def read_root():
-    return {"message": "TDS Virtual TA Semantic API is running."}
+def root():
+    return {"message": "FastAPI app running on Vercel"}
 
 @app.post("/ask")
 async def ask_question(request: Request):
@@ -27,25 +40,11 @@ async def ask_question(request: Request):
     question = body.get("question", "")
     if not question:
         return JSONResponse(status_code=400, content={"message": "No question provided."})
-
-    # Encode the input question
-    question_embedding = model.encode(question, convert_to_tensor=True)
-
-    # Find best match using cosine similarity
-    scores = util.cos_sim(question_embedding, corpus_embeddings)[0]
-    best_match_id = scores.argmax().item()
+    question_embedding = get_embedding(question)
+    scores = F.cosine_similarity(question_embedding, corpus_embeddings)
+    best_match_id = torch.argmax(scores).item()
     best_score = scores[best_match_id].item()
-
     if best_score < 0.4:
         return JSONResponse(status_code=404, content={"message": "No relevant answer found."})
-
-    return {
-        "answer": corpus[best_match_id],
-        "score": round(best_score, 3)
-    }
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 10000))  # Use PORT env var if available
-    uvicorn.run("app:app", host="0.0.0.0", port=port)
+    return {"answer": corpus[best_match_id], "score": round(best_score, 3)}
 
