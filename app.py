@@ -23,12 +23,18 @@ with open("combined_data.json", "r", encoding="utf-8") as f:
 corpus = [doc["content"] for doc in documents]
 
 def get_embedding(text):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding='max_length', max_length=128)
     with torch.no_grad():
         outputs = model(**inputs)
     return outputs.last_hidden_state.mean(dim=1)
 
-corpus_embeddings = torch.cat([get_embedding(text) for text in corpus])
+corpus_embeddings = None
+
+@app.on_event("startup")
+def load_embeddings():
+    global corpus_embeddings
+    corpus_embeddings = torch.cat([get_embedding(text) for text in corpus])
+
 
 @app.get("/")
 def root():
@@ -47,4 +53,7 @@ async def ask_question(request: Request):
     if best_score < 0.4:
         return JSONResponse(status_code=404, content={"message": "No relevant answer found."})
     return {"answer": corpus[best_match_id], "score": round(best_score, 3)}
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
